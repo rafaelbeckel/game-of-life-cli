@@ -63,7 +63,17 @@ struct ExitSignal(bool);
 
 pub fn run() -> std::io::Result<()> {
     let mut terminal = setup()?;
-    let mut state = State::default();
+    let size = terminal.size()?;
+    let width = size.width as usize;
+    let height = size.height as usize;
+
+    let mut state = State {
+        // a cell's char width is 2 chars
+        game: Grid::new(width / 2, height / 2),
+        // place the cursor at the center of the screen
+        origin: (width / 4, height / 2 - (height / 15)),
+        ..Default::default()
+    };
 
     loop {
         draw(&mut terminal, &mut state)?;
@@ -128,7 +138,9 @@ fn draw<'t>(
                     Some(_) => {}
                 };
             }
-            _ => {}
+            _ => {
+                game.preview(select_seed(state.seed_index), state.origin);
+            }
         }
 
         frame.render_widget(Paragraph::new(format!("{}", game)).white(), area[1]);
@@ -147,6 +159,7 @@ fn draw<'t>(
 #[inline]
 fn handle_input(state: &mut State) -> std::io::Result<ExitSignal> {
     if event::poll(std::time::Duration::from_millis(FRAMETIME_MILIS))? {
+        let game = &mut state.game;
         match event::read()? {
             //
             //
@@ -157,7 +170,7 @@ fn handle_input(state: &mut State) -> std::io::Result<ExitSignal> {
                 modifiers: _,
             }) => match kind {
                 event::MouseEventKind::Down(_) => {
-                    state.game.seed(
+                    game.seed(
                         select_seed(state.seed_index),
                         (row as usize, column as usize),
                     );
@@ -169,7 +182,7 @@ fn handle_input(state: &mut State) -> std::io::Result<ExitSignal> {
                     previous_seed(state);
                 }
                 event::MouseEventKind::Moved => {
-                    state.game.preview(
+                    game.preview(
                         select_seed(state.seed_index),
                         (row as usize, column as usize),
                     );
@@ -201,68 +214,50 @@ fn handle_input(state: &mut State) -> std::io::Result<ExitSignal> {
                                 }
                                 PlayState::Playing => {
                                     state.play = PlayState::Paused;
-                                    state.game.preview(
-                                        select_seed(state.seed_index),
-                                        (state.origin.0, state.origin.1),
-                                    );
+                                    game.preview(select_seed(state.seed_index), state.origin);
                                 }
                             }
                         }
                         KeyCode::Insert | KeyCode::Char(' ') => {
-                            state.game.seed(
-                                select_seed(state.seed_index),
-                                (state.origin.0, state.origin.1),
-                            );
+                            game.seed(select_seed(state.seed_index), state.origin);
                         }
                         KeyCode::Left => {
                             state.origin.0 = state.origin.0.saturating_sub(speed);
-                            state
-                                .game
-                                .preview(select_seed(state.seed_index), state.origin);
+                            game.preview(select_seed(state.seed_index), state.origin);
                         }
                         KeyCode::Right => {
-                            if state.origin.0 + speed <= state.game.width {
+                            if state.origin.0 + speed <= game.width {
                                 state.origin.0 += speed;
                             }
-                            state
-                                .game
-                                .preview(select_seed(state.seed_index), state.origin);
+                            game.preview(select_seed(state.seed_index), state.origin);
                         }
                         KeyCode::Up => {
                             state.origin.1 = state.origin.1.saturating_sub(speed);
-                            state
-                                .game
-                                .preview(select_seed(state.seed_index), state.origin);
+                            game.preview(select_seed(state.seed_index), state.origin);
                         }
                         KeyCode::Down => {
-                            if state.origin.1 + speed <= state.game.height {
+                            if state.origin.1 + speed <= game.height {
                                 state.origin.1 += speed;
                             }
-                            state
-                                .game
-                                .preview(select_seed(state.seed_index), state.origin);
+                            game.preview(select_seed(state.seed_index), state.origin);
                         }
                         KeyCode::Delete => {
-                            state.game.clear();
+                            game.clear();
                         }
                         KeyCode::Enter => match state.play {
                             PlayState::Paused => {
-                                state.game.tick();
+                                game.tick();
                             }
                             PlayState::Playing => {
                                 state.play = PlayState::Paused;
-                                state
-                                    .game
-                                    .preview(select_seed(state.seed_index), state.origin);
+                                game.preview(select_seed(state.seed_index), state.origin);
                             }
                         },
                         KeyCode::Char(ch) => {
                             if ch.is_digit(16) {
                                 state.seed_index = ch.to_digit(16).unwrap() as u8;
                             }
-                            state
-                                .game
-                                .preview(select_seed(state.seed_index), state.origin);
+                            game.preview(select_seed(state.seed_index), state.origin);
                         }
                         _ => {}
                     }
